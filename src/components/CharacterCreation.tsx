@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useGame } from '../state/gameStore'
-import type { Background, Position } from '../types'
+import type { Background, LifestyleChoice, Position } from '../types'
 import { computePotentialStars } from '../engine'
 
 const POSITIONS: { value: Position; label: string }[] = [
@@ -15,6 +15,12 @@ const BACKGROUNDS: { value: Background; label: string; desc: string }[] = [
   { value: 'HOOD', label: 'Enfant des quartiers populaires', desc: "Formé sur le bitume, une hargne et une créativité rares." },
   { value: 'NBA_LEGACY', label: "Fils d'un joueur NBA", desc: 'Un nom qui ouvre des portes, entouré du basket depuis le berceau.' },
   { value: 'SELF_MADE', label: "Révélé sur le tas", desc: "Repéré tardivement, tout est encore à prouver." },
+]
+
+export const LIFESTYLE_OPTIONS: { value: LifestyleChoice; label: string; desc: string }[] = [
+  { value: 'hygiene', label: 'Une hygiène de vie rigoureuse', desc: 'Sommeil, nutrition, récupération : le corps avant tout.' },
+  { value: 'family', label: 'Une famille encadrante', desc: 'Un foyer stable qui te garde les pieds sur terre.' },
+  { value: 'friends', label: 'Une bonne bande de potes', desc: 'Des amis fidèles qui te tirent vers le haut.' },
 ]
 
 function StarPreview({ stars }: { stars: number }) {
@@ -35,14 +41,9 @@ export function CharacterCreation() {
   const [position, setPosition] = useState<Position>('PG')
   const [jerseyNumber, setJerseyNumber] = useState(23)
   const [background, setBackground] = useState<Background>('HOOD')
-  const [hygiene, setHygiene] = useState(true)
-  const [family, setFamily] = useState(true)
-  const [friends, setFriends] = useState(true)
+  const [lifestyle, setLifestyle] = useState<LifestyleChoice>('hygiene')
 
-  const potential = useMemo(
-    () => computePotentialStars(background, { hygiene, family, friends }),
-    [background, hygiene, family, friends],
-  )
+  const potential = useMemo(() => computePotentialStars(background, lifestyle), [background, lifestyle])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -52,9 +53,7 @@ export function CharacterCreation() {
       position,
       jerseyNumber,
       background,
-      hygiene,
-      family,
-      friends,
+      lifestyle,
     })
   }
 
@@ -116,29 +115,19 @@ export function CharacterCreation() {
           </div>
 
           <div className="field">
-            <span>Ton mode de vie</span>
-            <div className="toggle-list">
-              <ToggleRow
-                label="Hygiène de vie"
-                trueLabel="Rigoureuse"
-                falseLabel="Relâchée"
-                value={hygiene}
-                onChange={setHygiene}
-              />
-              <ToggleRow
-                label="Famille"
-                trueLabel="Encadrante"
-                falseLabel="Absente"
-                value={family}
-                onChange={setFamily}
-              />
-              <ToggleRow
-                label="Entourage"
-                trueLabel="Bonne bande de potes"
-                falseLabel="Mauvaises fréquentations"
-                value={friends}
-                onChange={setFriends}
-              />
+            <span>Ton meilleur atout dans la vie (choisis-en un seul)</span>
+            <div className="option-cards">
+              {LIFESTYLE_OPTIONS.map((l) => (
+                <button
+                  type="button"
+                  key={l.value}
+                  className={`option-card ${lifestyle === l.value ? 'option-card-selected' : ''}`}
+                  onClick={() => setLifestyle(l.value)}
+                >
+                  <span className="option-card-label">{l.label}</span>
+                  <span className="option-card-desc">{l.desc}</span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -151,42 +140,6 @@ export function CharacterCreation() {
             Commencer l'histoire
           </button>
         </form>
-      </div>
-    </div>
-  )
-}
-
-function ToggleRow({
-  label,
-  trueLabel,
-  falseLabel,
-  value,
-  onChange,
-}: {
-  label: string
-  trueLabel: string
-  falseLabel: string
-  value: boolean
-  onChange: (v: boolean) => void
-}) {
-  return (
-    <div className="toggle-row">
-      <span className="toggle-row-label">{label}</span>
-      <div className="toggle-pair">
-        <button
-          type="button"
-          className={`toggle-btn ${value ? 'toggle-btn-active' : ''}`}
-          onClick={() => onChange(true)}
-        >
-          {trueLabel}
-        </button>
-        <button
-          type="button"
-          className={`toggle-btn ${!value ? 'toggle-btn-active' : ''}`}
-          onClick={() => onChange(false)}
-        >
-          {falseLabel}
-        </button>
       </div>
     </div>
   )

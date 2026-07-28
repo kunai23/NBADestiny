@@ -4,6 +4,8 @@ import type {
   CareerStage,
   GameState,
   League,
+  LifestyleChoice,
+  PlayerProfile,
   PlayerStatline,
   Position,
   SeasonState,
@@ -16,13 +18,19 @@ import {
 } from '../data'
 import { CRUCIAL_MOMENTS } from '../data/crucialMoments'
 import {
+  applyAging,
   applyChoiceEffect,
   computePotentialStars,
+  computeRookieContract,
   computeSeasonAwards,
   computeTeamOverall,
+  contractCurrency,
   emptyStatline,
+  formatMoney,
   generateSchedule,
+  isProStage,
   ownTeamNameFor,
+  renewContract,
   resolveCrucialGame,
   simulateCrucialGameBase,
   simulateRegularGame,
@@ -47,6 +55,8 @@ function initialState(): GameState {
     lastEventResultText: null,
     lastCrucialSuccess: null,
     lastSeasonAwards: [],
+    lastSeasonIncome: 0,
+    lastContractChangeText: null,
     flags: {},
     careerLog: [],
     awards: [],
@@ -63,9 +73,7 @@ type Action =
       position: Position
       jerseyNumber: number
       background: Background
-      hygiene: boolean
-      family: boolean
-      friends: boolean
+      lifestyle: LifestyleChoice
     }
   | { type: 'CHOOSE_STORY_OPTION'; choiceId: string }
   | { type: 'NEXT_GAME' }
@@ -80,6 +88,8 @@ const TRANSITION_NEXT_STAGE: Record<string, CareerStage> = {
   transition_euro_academy2_to_draft: 'EUROLEAGUE',
 }
 
+const DRAFT_TRANSITIONS = new Set(['transition_us_college_to_draft', 'transition_euro_academy2_to_draft'])
+
 function buildSeason(stage: CareerStage, seasonNumber: number, player: GameState['player']): SeasonState {
   const overall = computeTeamOverall(stage, player!, seasonNumber)
   return {
@@ -91,6 +101,7 @@ function buildSeason(stage: CareerStage, seasonNumber: number, player: GameState
     wins: 0,
     losses: 0,
     seasonStats: emptyStatline(),
+    highlights: [],
   }
 }
 
@@ -116,12 +127,15 @@ function recordAwardFor(season: SeasonState): string | null {
   return null
 }
 
-function finalizeSeason(state: GameState, season: SeasonState): Partial<GameState> {
+function finalizeSeason(state: GameState, season: SeasonState, player: PlayerProfile): Partial<GameState> {
   const statAwards = formatAwards(season)
   const recordAward = recordAwardFor(season)
   const newAwards = recordAward ? [recordAward, ...statAwards] : statAwards
+  const income = isProStage(season.stage) ? player.contract : 0
+  const updatedPlayer = income > 0 ? { ...player, careerEarnings: player.careerEarnings + income } : player
   return {
     season,
+    player: updatedPlayer,
     phase: 'season_summary',
     stageHistoryCount: {
       ...state.stageHistoryCount,
@@ -133,60 +147,72 @@ function finalizeSeason(state: GameState, season: SeasonState): Partial<GameStat
     ],
     awards: [...state.awards, ...newAwards],
     lastSeasonAwards: newAwards,
+    lastSeasonIncome: income,
     pendingStoryEventId: null,
     storyContext: null,
   }
 }
 
-function advanceToNextGame(state: GameState): Partial<GameState> {
+// Simulates every remaining regular-season game in bulk (auto-resolving narrative
+// highlights along the way) and only stops for a crucial match or season end.
+function advanceSeason(state: GameState): Partial<GameState> {
   const season = state.season!
-  const idx = season.currentGameIndex
-  if (idx >= season.schedule.length) {
-    return finalizeSeason(state, season)
-  }
-  const game = season.schedule[idx]
-  if (game.isCrucial) {
-    const base = simulateCrucialGameBase(season.stage, state.player!, season.seasonNumber)
-    const cm = pickRandomCrucialMoment(state.usedCrucialMomentIds)
-    return {
-      phase: 'crucial_moment',
-      pendingCrucialMomentId: cm.id,
-      pendingCrucialBase: base,
-      usedCrucialMomentIds: [...state.usedCrucialMomentIds, cm.id],
-      pendingStoryEventId: null,
-      storyContext: null,
-      lastCrucialSuccess: null,
+  let player = state.player!
+  let idx = season.currentGameIndex
+  let wins = season.wins
+  let losses = season.losses
+  let stats = season.seasonStats
+  const highlights = [...season.highlights]
+  let completedEventIds = [...state.completedEventIds]
+  const schedule = [...season.schedule]
+
+  while (idx < schedule.length) {
+    const game = schedule[idx]
+
+    if (game.isCrucial) {
+      const base = simulateCrucialGameBase(season.stage, player, season.seasonNumber)
+      const cm = pickRandomCrucialMoment(state.usedCrucialMomentIds)
+      const inProgressSeason: SeasonState = { ...season, schedule, currentGameIndex: idx, wins, losses, seasonStats: stats, highlights }
+      return {
+        player,
+        season: inProgressSeason,
+        completedEventIds,
+        phase: 'crucial_moment',
+        pendingCrucialMomentId: cm.id,
+        pendingCrucialBase: base,
+        usedCrucialMomentIds: [...state.usedCrucialMomentIds, cm.id],
+        pendingStoryEventId: null,
+        storyContext: null,
+        lastCrucialSuccess: null,
+        lastGameResult: null,
+      }
     }
+
+    if (game.hasHighlight) {
+      const event = pickRandomInterstitial(completedEventIds.slice(-3))
+      const choice = event.choices[Math.floor(Math.random() * event.choices.length)]
+      player = applyChoiceEffect(player, choice.effect)
+      highlights.push(`${event.title} — ${choice.resultText}`)
+      completedEventIds = [...completedEventIds, event.id]
+    }
+
+    const result = simulateRegularGame(season.stage, player, season.seasonNumber)
+    schedule[idx] = {
+      ...game,
+      played: true,
+      won: result.won,
+      teamScore: result.teamScore,
+      oppScore: result.oppScore,
+      playerStatline: result.playerStatline,
+    }
+    wins += result.won ? 1 : 0
+    losses += result.won ? 0 : 1
+    stats = addStatline(stats, result.playerStatline)
+    idx++
   }
-  const result = simulateRegularGame(season.stage, state.player!, season.seasonNumber)
-  const newSchedule = [...season.schedule]
-  newSchedule[idx] = {
-    ...game,
-    played: true,
-    won: result.won,
-    teamScore: result.teamScore,
-    oppScore: result.oppScore,
-    playerStatline: result.playerStatline,
-  }
-  const newSeason: SeasonState = {
-    ...season,
-    schedule: newSchedule,
-    currentGameIndex: idx + 1,
-    wins: season.wins + (result.won ? 1 : 0),
-    losses: season.losses + (result.won ? 0 : 1),
-    seasonStats: addStatline(season.seasonStats, result.playerStatline),
-  }
-  if (newSeason.currentGameIndex >= newSeason.schedule.length) {
-    return { ...finalizeSeason(state, newSeason), lastGameResult: newSchedule[idx], lastCrucialSuccess: null }
-  }
-  return {
-    season: newSeason,
-    phase: 'hub',
-    lastGameResult: newSchedule[idx],
-    pendingStoryEventId: null,
-    storyContext: null,
-    lastCrucialSuccess: null,
-  }
+
+  const finishedSeason: SeasonState = { ...season, schedule, currentGameIndex: idx, wins, losses, seasonStats: stats, highlights }
+  return { completedEventIds, ...finalizeSeason(state, finishedSeason, player) }
 }
 
 function reducer(state: GameState, action: Action): GameState {
@@ -201,20 +227,21 @@ function reducer(state: GameState, action: Action): GameState {
       return state
 
     case 'CREATE_PLAYER': {
-      const lifestyle = { hygiene: action.hygiene, family: action.family, friends: action.friends }
-      const potentialStars = computePotentialStars(action.background, lifestyle)
+      const potentialStars = computePotentialStars(action.background, action.lifestyle)
       const player: NonNullable<GameState['player']> = {
         name: action.name || 'Rookie',
         position: action.position,
         jerseyNumber: action.jerseyNumber,
         origin: 'USA',
         background: action.background,
-        lifestyle,
+        lifestyle: action.lifestyle,
         potentialStars,
         age: 16,
         reputation: 8,
         morale: 70,
         energy: 100,
+        contract: 0,
+        careerEarnings: 0,
         attributes: {
           shooting: 28 + Math.round(Math.random() * 6),
           playmaking: 28 + Math.round(Math.random() * 6),
@@ -280,16 +307,6 @@ function reducer(state: GameState, action: Action): GameState {
         }
       }
 
-      if (state.storyContext === 'interstitial') {
-        return {
-          ...base,
-          storyQueue: [],
-          pendingStoryEventId: null,
-          storyContext: null,
-          ...advanceToNextGame(base),
-        }
-      }
-
       if (state.storyContext === 'transition') {
         if (newFlags.retire) {
           return {
@@ -300,16 +317,41 @@ function reducer(state: GameState, action: Action): GameState {
             phase: 'career_end',
           }
         }
-        const nextStage: CareerStage = TRANSITION_NEXT_STAGE[event.id] ?? state.season!.stage
-        const nextSeasonNumber = state.season!.seasonNumber + 1
-        const season = buildSeason(nextStage, nextSeasonNumber, updatedPlayer)
+        const completedSeason = state.season!
+        const nextStage: CareerStage = TRANSITION_NEXT_STAGE[event.id] ?? completedSeason.stage
+        const nextSeasonNumber = completedSeason.seasonNumber + 1
+        const agedPlayer = applyAging(updatedPlayer)
+
+        let contractedPlayer = agedPlayer
+        let lastContractChangeText: string | null = null
+        if (DRAFT_TRANSITIONS.has(event.id)) {
+          const currency = contractCurrency(nextStage)
+          const rookieContract = computeRookieContract(agedPlayer, nextStage as 'NBA' | 'EUROLEAGUE')
+          contractedPlayer = { ...agedPlayer, contract: rookieContract }
+          lastContractChangeText = `Premier contrat professionnel signé : ${formatMoney(rookieContract, currency)} / an`
+        } else if (event.id === 'transition_pro_continue') {
+          const currency = contractCurrency(completedSeason.stage)
+          const awardsCount = state.lastSeasonAwards.length
+          const newContract = renewContract(agedPlayer.contract, completedSeason, awardsCount)
+          const oldContract = agedPlayer.contract
+          contractedPlayer = { ...agedPlayer, contract: newContract }
+          const pctChange = oldContract > 0 ? Math.round(((newContract - oldContract) / oldContract) * 100) : null
+          lastContractChangeText =
+            pctChange === null
+              ? `Nouveau contrat : ${formatMoney(newContract, currency)} / an`
+              : `Nouveau contrat : ${formatMoney(newContract, currency)} / an (${pctChange >= 0 ? '+' : ''}${pctChange}%)`
+        }
+
+        const season = buildSeason(nextStage, nextSeasonNumber, contractedPlayer)
         return {
           ...base,
+          player: contractedPlayer,
           storyQueue: [],
           pendingStoryEventId: null,
           storyContext: null,
           season,
           phase: 'hub',
+          lastContractChangeText,
         }
       }
 
@@ -318,20 +360,7 @@ function reducer(state: GameState, action: Action): GameState {
 
     case 'NEXT_GAME': {
       if (!state.season || state.phase !== 'hub') return state
-      const showInterstitial = Math.random() < 0.4
-      if (showInterstitial) {
-        const recentIds = state.completedEventIds.slice(-3)
-        const event = pickRandomInterstitial(recentIds)
-        return {
-          ...state,
-          storyQueue: [event.id],
-          pendingStoryEventId: event.id,
-          storyContext: 'interstitial',
-          phase: 'story_event',
-          lastGameResult: null,
-        }
-      }
-      return { ...state, ...advanceToNextGame(state), lastEventResultText: null }
+      return { ...state, ...advanceSeason(state), lastEventResultText: null }
     }
 
     case 'CHOOSE_CRUCIAL_OPTION': {
@@ -377,7 +406,7 @@ function reducer(state: GameState, action: Action): GameState {
       }
 
       if (newSeason.currentGameIndex >= newSeason.schedule.length) {
-        return { ...nextState, ...finalizeSeason(nextState, newSeason), lastGameResult: newSchedule[idx] }
+        return { ...nextState, ...finalizeSeason(nextState, newSeason, updatedPlayer), lastGameResult: newSchedule[idx] }
       }
       return { ...nextState, season: newSeason, phase: 'hub', lastGameResult: newSchedule[idx] }
     }
@@ -401,6 +430,7 @@ function reducer(state: GameState, action: Action): GameState {
         phase: 'story_event',
         lastGameResult: null,
         lastSeasonAwards: [],
+        lastContractChangeText: null,
       }
     }
 

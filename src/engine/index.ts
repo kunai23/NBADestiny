@@ -4,7 +4,7 @@ import type {
   CareerStage,
   ChoiceEffect,
   GameResult,
-  Lifestyle,
+  LifestyleChoice,
   PlayerProfile,
   PlayerStatline,
   SeasonState,
@@ -35,22 +35,27 @@ const BACKGROUND_BASE_POTENTIAL: Record<Background, number> = {
   SELF_MADE: 2,
 }
 
-export function computePotentialStars(background: Background, lifestyle: Lifestyle): number {
+export function computePotentialStars(background: Background, lifestyle: LifestyleChoice): number {
   let stars = BACKGROUND_BASE_POTENTIAL[background]
-  if (lifestyle.hygiene) stars += 1
-  if (lifestyle.family) stars += 1
-  if (lifestyle.friends) stars += 1
-  if (lifestyle.hygiene && lifestyle.family && lifestyle.friends) stars += 1 // synergie parfaite
+  if (lifestyle) stars += 1 // the one lifestyle trait the player committed to
   return clamp(stars, 1, 5)
 }
 
-function growthFactor(potentialStars: number): number {
-  return 0.85 + potentialStars * 0.06
+function ageGrowthMultiplier(age: number): number {
+  if (age <= 20) return 1.15
+  if (age <= 27) return 1.0
+  if (age <= 31) return 0.85
+  if (age <= 34) return 0.6
+  return 0.4
+}
+
+function growthFactor(potentialStars: number, age: number): number {
+  return (0.85 + potentialStars * 0.06) * ageGrowthMultiplier(age)
 }
 
 export function applyChoiceEffect(player: PlayerProfile, effect: ChoiceEffect): PlayerProfile {
   const attrs = { ...player.attributes }
-  const factor = growthFactor(player.potentialStars)
+  const factor = growthFactor(player.potentialStars, player.age)
   for (const key of ATTRIBUTE_KEYS) {
     const delta = effect[key]
     if (typeof delta === 'number') {
@@ -67,6 +72,19 @@ export function applyChoiceEffect(player: PlayerProfile, effect: ChoiceEffect): 
   }
 }
 
+// Aging: applied once per season transition. Past-peak players decline physically.
+export function applyAging(player: PlayerProfile): PlayerProfile {
+  const age = player.age + 1
+  const attrs = { ...player.attributes }
+  if (age > 32) {
+    const decline = 2 + Math.floor((age - 32) / 2)
+    attrs.athleticism = clamp(attrs.athleticism - decline)
+    attrs.defense = clamp(attrs.defense - 1)
+    attrs.shooting = clamp(attrs.shooting - 1)
+  }
+  return { ...player, age, attributes: attrs }
+}
+
 const STAGE_BASELINE: Record<CareerStage, { own: number; oppMin: number; oppMax: number }> = {
   US_HIGH_SCHOOL: { own: 52, oppMin: 42, oppMax: 62 },
   US_COLLEGE: { own: 62, oppMin: 52, oppMax: 74 },
@@ -74,6 +92,16 @@ const STAGE_BASELINE: Record<CareerStage, { own: number; oppMin: number; oppMax:
   DRAFT: { own: 60, oppMin: 60, oppMax: 60 },
   EUROLEAGUE: { own: 74, oppMin: 64, oppMax: 86 },
   NBA: { own: 78, oppMin: 70, oppMax: 94 },
+}
+
+// Roughly realistic regular-season game counts per level.
+export const STAGE_GAME_COUNTS: Record<CareerStage, number> = {
+  US_HIGH_SCHOOL: 24,
+  US_COLLEGE: 40,
+  EURO_ACADEMY: 24,
+  DRAFT: 0,
+  EUROLEAGUE: 34,
+  NBA: 82,
 }
 
 export function computeTeamOverall(stage: CareerStage, player: PlayerProfile, seasonNumber: number): number {
@@ -89,18 +117,44 @@ function randomOpponentOverall(stage: CareerStage): number {
   return Math.round(oppMin + Math.random() * (oppMax - oppMin))
 }
 
+function pickSpreadIndices(gamesCount: number, count: number, exclude: Set<number>): number[] {
+  const picked: number[] = []
+  if (count <= 0 || gamesCount <= 0) return picked
+  const segmentSize = gamesCount / count
+  for (let i = 0; i < count; i++) {
+    const start = Math.floor(i * segmentSize)
+    const end = Math.max(start + 1, Math.floor((i + 1) * segmentSize))
+    const candidates = []
+    for (let idx = start; idx < Math.min(end, gamesCount); idx++) {
+      if (!exclude.has(idx)) candidates.push(idx)
+    }
+    if (candidates.length > 0) {
+      picked.push(candidates[Math.floor(Math.random() * candidates.length)])
+    }
+  }
+  return picked
+}
+
 export function generateSchedule(stage: CareerStage, seasonNumber: number, player: PlayerProfile): GameResult[] {
-  const gamesCount = 8
+  const gamesCount = STAGE_GAME_COUNTS[stage]
   const opponents = pickOpponents(stage, gamesCount)
+
+  const crucialCount = clamp(Math.round(gamesCount / 20), 2, 5)
   const crucialIndices = new Set<number>()
-  crucialIndices.add(gamesCount - 1) // final game always crucial
-  const midCrucial = 2 + Math.floor(Math.random() * (gamesCount - 4))
-  crucialIndices.add(midCrucial)
+  crucialIndices.add(gamesCount - 1) // final game of the season is always crucial
+  for (const idx of pickSpreadIndices(gamesCount - 1, crucialCount - 1, crucialIndices)) {
+    crucialIndices.add(idx)
+  }
+
+  const highlightCount = clamp(Math.round(gamesCount / 10), 3, 8)
+  const highlightIndices = new Set(pickSpreadIndices(gamesCount, highlightCount, crucialIndices))
+
   void seasonNumber
   void player
   return opponents.map((opponent, idx) => ({
     opponent,
     isCrucial: crucialIndices.has(idx),
+    hasHighlight: highlightIndices.has(idx),
     played: false,
   }))
 }
@@ -179,17 +233,6 @@ export function resolveCrucialGame(
   }
 }
 
-export function getNextStage(stage: CareerStage, seasonNumber: number, origin: 'USA' | 'EUROPE'): CareerStage {
-  if (origin === 'USA') {
-    if (stage === 'US_HIGH_SCHOOL') return 'US_COLLEGE'
-    if (stage === 'US_COLLEGE') return 'NBA'
-    return 'NBA'
-  }
-  if (stage === 'EURO_ACADEMY' && seasonNumber === 1) return 'EURO_ACADEMY'
-  if (stage === 'EURO_ACADEMY') return 'EUROLEAGUE'
-  return 'EUROLEAGUE'
-}
-
 export function isProStage(stage: CareerStage): boolean {
   return stage === 'NBA' || stage === 'EUROLEAGUE'
 }
@@ -262,4 +305,34 @@ export function computeSeasonAwards(season: SeasonState): SeasonAward[] {
   }
 
   return awards
+}
+
+// --- Contracts ---
+
+export function contractCurrency(stage: CareerStage): '$' | '€' {
+  return stage === 'NBA' ? '$' : '€'
+}
+
+function roundThousand(n: number): number {
+  return Math.round(n / 1000) * 1000
+}
+
+export function computeRookieContract(player: PlayerProfile, stage: 'NBA' | 'EUROLEAGUE'): number {
+  const overall = playerOverall(player.attributes)
+  if (stage === 'NBA') {
+    return roundThousand(300_000 + overall * 12_000 + player.reputation * 4_000 + player.potentialStars * 60_000)
+  }
+  return roundThousand(60_000 + overall * 3_000 + player.reputation * 1_200 + player.potentialStars * 15_000)
+}
+
+export function renewContract(previousContract: number, season: SeasonState, awardsCount: number): number {
+  const gamesPlayed = season.wins + season.losses
+  const winPct = gamesPlayed > 0 ? season.wins / gamesPlayed : 0.5
+  const multiplier = clamp(0.75 + winPct * 0.5 + awardsCount * 0.15, 0.6, 2.2)
+  return roundThousand(previousContract * multiplier)
+}
+
+export function formatMoney(amount: number, currency: '$' | '€' = '$'): string {
+  const formatted = Math.round(amount).toLocaleString('fr-FR')
+  return currency === '$' ? `${formatted} $` : `${formatted} €`
 }

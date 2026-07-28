@@ -5,7 +5,7 @@ import { seasonAverages } from '../engine'
 
 export function CareerHub() {
   const { state, dispatch } = useGame()
-  const { player, season, lastGameResult, lastEventResultText, lastCrucialSuccess } = state
+  const { player, season, lastGameResult, lastEventResultText, lastCrucialSuccess, lastContractChangeText } = state
   if (!player || !season) return null
 
   const nextGame = season.schedule[season.currentGameIndex]
@@ -16,16 +16,23 @@ export function CareerHub() {
   return (
     <div className="screen hub-screen">
       <div className="hub-sidebar">
-        <PlayerCard player={player} />
+        <PlayerCard player={player} stage={season.stage} />
       </div>
       <div className="hub-main">
         <div className="card team-card">
           <span className="badge">{STAGE_LABELS[season.stage]} · Saison {season.seasonNumber}</span>
           <h2>{season.team.name}</h2>
           <p className="team-record">
-            Bilan : <strong>{season.wins}</strong> victoires - <strong>{season.losses}</strong> défaites
+            Bilan : <strong>{season.wins}</strong> victoires - <strong>{season.losses}</strong> défaites ·{' '}
+            {gamesPlayed}/{season.schedule.length} matchs joués
           </p>
         </div>
+
+        {lastContractChangeText && (
+          <div className="card result-card contract-change-card">
+            <p>💰 {lastContractChangeText}</p>
+          </div>
+        )}
 
         <div className="card season-stats-card">
           <h3>Tes statistiques de saison</h3>
@@ -63,7 +70,7 @@ export function CareerHub() {
 
         <div className="card schedule-card">
           <h3>Calendrier</h3>
-          <ul className="schedule-list">
+          <ul className="schedule-list schedule-list-scroll">
             {season.schedule.map((g, idx) => (
               <li
                 key={idx}
@@ -85,7 +92,7 @@ export function CareerHub() {
         <div className="hub-actions">
           {!seasonOver ? (
             <button className="btn btn-primary" onClick={() => dispatch({ type: 'NEXT_GAME' })}>
-              {nextGame?.isCrucial ? 'Aborder le prochain match décisif' : 'Jouer le prochain match'}
+              {nextGame?.isCrucial ? 'Aborder le prochain match décisif' : 'Simuler la saison'}
             </button>
           ) : (
             <button className="btn btn-primary" onClick={() => dispatch({ type: 'CONTINUE_CAREER' })}>

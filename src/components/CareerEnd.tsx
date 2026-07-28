@@ -1,5 +1,5 @@
 import { useGame } from '../state/gameStore'
-import { computeLegacyRating, playerOverall } from '../engine'
+import { computeLegacyRating, contractCurrency, formatMoney, playerOverall } from '../engine'
 
 export function CareerEnd() {
   const { state, dispatch } = useGame()
@@ -9,6 +9,7 @@ export function CareerEnd() {
   const legacy = computeLegacyRating(player, awards, seasonHistory)
   const totalWins = seasonHistory.reduce((a, s) => a + s.wins, 0)
   const totalLosses = seasonHistory.reduce((a, s) => a + s.losses, 0)
+  const currency = contractCurrency(seasonHistory[seasonHistory.length - 1]?.stage ?? 'NBA')
 
   return (
     <div className="screen">
@@ -30,6 +31,12 @@ export function CareerEnd() {
             <span className="summary-label">Bilan total</span>
             <span className="summary-value">{totalWins}V - {totalLosses}D</span>
           </div>
+          {player.careerEarnings > 0 && (
+            <div>
+              <span className="summary-label">Gains de carrière</span>
+              <span className="summary-value">{formatMoney(player.careerEarnings, currency)}</span>
+            </div>
+          )}
         </div>
 
         {awards.length > 0 && (

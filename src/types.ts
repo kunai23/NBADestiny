@@ -6,11 +6,7 @@ export type League = 'US_HIGH_SCHOOL' | 'US_COLLEGE' | 'EURO_ACADEMY' | 'EUROLEA
 
 export type Background = 'HOOD' | 'NBA_LEGACY' | 'SELF_MADE'
 
-export interface Lifestyle {
-  hygiene: boolean // bonne hygiène de vie
-  family: boolean // famille encadrante
-  friends: boolean // bonne bande de potes
-}
+export type LifestyleChoice = 'hygiene' | 'family' | 'friends'
 
 export interface Attributes {
   shooting: number // scoring, jumpshot
@@ -33,7 +29,7 @@ export interface PlayerProfile {
   position: Position
   origin: 'USA' | 'EUROPE'
   background: Background
-  lifestyle: Lifestyle
+  lifestyle: LifestyleChoice
   potentialStars: number // 1-5, scales attribute growth from choices
   attributes: Attributes
   reputation: number // 0-100, fame/legacy
@@ -41,6 +37,8 @@ export interface PlayerProfile {
   energy: number // 0-100
   age: number
   jerseyNumber: number
+  contract: number // current annual salary ($), 0 while amateur
+  careerEarnings: number // cumulative money earned as a pro
 }
 
 export interface TeamInfo {
@@ -116,6 +114,7 @@ export interface PlayerStatline {
 export interface GameResult {
   opponent: string
   isCrucial: boolean
+  hasHighlight: boolean
   played: boolean
   won?: boolean
   teamScore?: number
@@ -132,6 +131,7 @@ export interface SeasonState {
   wins: number
   losses: number
   seasonStats: PlayerStatline
+  highlights: string[]
 }
 
 export interface CrucialBase {
@@ -147,7 +147,7 @@ export interface CareerLogEntry {
   text: string
 }
 
-export type StoryContext = 'prologue' | 'interstitial' | 'transition' | 'pro_continue'
+export type StoryContext = 'prologue' | 'transition'
 
 export interface GameState {
   phase: GamePhase
@@ -165,6 +165,8 @@ export interface GameState {
   lastEventResultText: string | null
   lastCrucialSuccess: boolean | null
   lastSeasonAwards: string[]
+  lastSeasonIncome: number
+  lastContractChangeText: string | null
   flags: Record<string, boolean>
   careerLog: CareerLogEntry[]
   awards: string[]

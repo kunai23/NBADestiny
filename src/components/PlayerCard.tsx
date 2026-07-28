@@ -1,5 +1,5 @@
-import type { PlayerProfile } from '../types'
-import { playerOverall } from '../engine'
+import type { CareerStage, PlayerProfile } from '../types'
+import { contractCurrency, formatMoney, playerOverall } from '../engine'
 
 const ATTR_LIST: { key: keyof PlayerProfile['attributes']; label: string }[] = [
   { key: 'shooting', label: 'Tir' },
@@ -16,6 +16,12 @@ const BACKGROUND_LABELS: Record<PlayerProfile['background'], string> = {
   SELF_MADE: 'Révélé sur le tas',
 }
 
+const LIFESTYLE_LABELS: Record<PlayerProfile['lifestyle'], string> = {
+  hygiene: 'Hygiène de vie rigoureuse',
+  family: 'Famille encadrante',
+  friends: 'Bonne bande de potes',
+}
+
 function Stars({ count }: { count: number }) {
   return (
     <span className="star-preview" aria-label={`Potentiel : ${count} étoiles sur 5`}>
@@ -28,8 +34,9 @@ function Stars({ count }: { count: number }) {
   )
 }
 
-export function PlayerCard({ player }: { player: PlayerProfile }) {
+export function PlayerCard({ player, stage }: { player: PlayerProfile; stage?: CareerStage }) {
   const overall = playerOverall(player.attributes)
+  const currency = contractCurrency(stage ?? 'NBA')
   return (
     <div className="player-card">
       <div className="player-card-header">
@@ -39,12 +46,26 @@ export function PlayerCard({ player }: { player: PlayerProfile }) {
             #{player.jerseyNumber} · {player.position} · {player.origin === 'USA' ? 'USA' : 'Europe'} · {player.age} ans
           </p>
           <p className="player-background">{BACKGROUND_LABELS[player.background]}</p>
+          <p className="player-lifestyle">{LIFESTYLE_LABELS[player.lifestyle]}</p>
         </div>
         <div className="overall-badge">{overall}</div>
       </div>
       <div className="potential-row">
         <span>Potentiel</span>
         <Stars count={player.potentialStars} />
+      </div>
+      <div className="contract-box">
+        {player.contract > 0 ? (
+          <>
+            <span className="contract-label">Contrat annuel</span>
+            <span className="contract-value">{formatMoney(player.contract, currency)}</span>
+          </>
+        ) : (
+          <span className="contract-label">Statut amateur — pas de salaire</span>
+        )}
+        {player.careerEarnings > 0 && (
+          <span className="contract-earnings">Cumul carrière : {formatMoney(player.careerEarnings, currency)}</span>
+        )}
       </div>
       <div className="meter-row">
         <Meter label="Réputation" value={player.reputation} />
