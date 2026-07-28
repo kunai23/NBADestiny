@@ -1,9 +1,13 @@
 import type {
   Attributes,
+  Background,
   CareerStage,
   ChoiceEffect,
   GameResult,
+  Lifestyle,
   PlayerProfile,
+  PlayerStatline,
+  SeasonState,
 } from '../types'
 import { pickOpponents, pickOwnTeamName } from '../data/teams'
 
@@ -25,12 +29,33 @@ export function playerOverall(attrs: Attributes): number {
   return Math.round(sum / ATTRIBUTE_KEYS.length)
 }
 
+const BACKGROUND_BASE_POTENTIAL: Record<Background, number> = {
+  NBA_LEGACY: 3,
+  HOOD: 2,
+  SELF_MADE: 2,
+}
+
+export function computePotentialStars(background: Background, lifestyle: Lifestyle): number {
+  let stars = BACKGROUND_BASE_POTENTIAL[background]
+  if (lifestyle.hygiene) stars += 1
+  if (lifestyle.family) stars += 1
+  if (lifestyle.friends) stars += 1
+  if (lifestyle.hygiene && lifestyle.family && lifestyle.friends) stars += 1 // synergie parfaite
+  return clamp(stars, 1, 5)
+}
+
+function growthFactor(potentialStars: number): number {
+  return 0.85 + potentialStars * 0.06
+}
+
 export function applyChoiceEffect(player: PlayerProfile, effect: ChoiceEffect): PlayerProfile {
   const attrs = { ...player.attributes }
+  const factor = growthFactor(player.potentialStars)
   for (const key of ATTRIBUTE_KEYS) {
     const delta = effect[key]
     if (typeof delta === 'number') {
-      attrs[key] = clamp(attrs[key] + delta)
+      const scaled = delta > 0 ? Math.round(delta * factor) : delta
+      attrs[key] = clamp(attrs[key] + scaled)
     }
   }
   return {
@@ -84,20 +109,25 @@ export function ownTeamNameFor(stage: CareerStage): string {
   return pickOwnTeamName(stage)
 }
 
+export function emptyStatline(): PlayerStatline {
+  return { pts: 0, reb: 0, ast: 0, blk: 0 }
+}
+
 interface SimResult {
   won: boolean
   teamScore: number
   oppScore: number
-  playerStatline: { pts: number; reb: number; ast: number }
+  playerStatline: PlayerStatline
 }
 
-function statlineFor(player: PlayerProfile, won: boolean): { pts: number; reb: number; ast: number } {
-  const { shooting, playmaking, athleticism } = player.attributes
+function statlineFor(player: PlayerProfile, won: boolean): PlayerStatline {
+  const { shooting, playmaking, athleticism, defense } = player.attributes
   const energyFactor = 0.7 + (player.energy / 100) * 0.5
   const pts = Math.round((8 + shooting * 0.22 + athleticism * 0.05) * energyFactor * (won ? 1.05 : 0.95))
   const ast = Math.round((1 + playmaking * 0.09) * energyFactor)
   const reb = Math.round((2 + athleticism * 0.06) * energyFactor)
-  return { pts: Math.max(0, pts), ast: Math.max(0, ast), reb: Math.max(0, reb) }
+  const blk = Math.round((0.3 + defense * 0.035) * energyFactor)
+  return { pts: Math.max(0, pts), ast: Math.max(0, ast), reb: Math.max(0, reb), blk: Math.max(0, blk) }
 }
 
 export function simulateRegularGame(stage: CareerStage, player: PlayerProfile, seasonNumber: number): SimResult {
@@ -170,4 +200,66 @@ export function computeLegacyRating(player: PlayerProfile, awards: string[], sea
   const winPct = totalGames > 0 ? totalWins / totalGames : 0
   const overall = playerOverall(player.attributes)
   return Math.round(player.reputation * 0.4 + overall * 0.3 + winPct * 100 * 0.2 + awards.length * 5 * 0.1)
+}
+
+const STAGE_BENCHMARKS: Record<CareerStage, { ppg: number; rpg: number; apg: number; bpg: number }> = {
+  US_HIGH_SCHOOL: { ppg: 12, rpg: 5, apg: 3, bpg: 1 },
+  US_COLLEGE: { ppg: 14, rpg: 6, apg: 3.5, bpg: 1.2 },
+  EURO_ACADEMY: { ppg: 11, rpg: 5, apg: 3, bpg: 1 },
+  DRAFT: { ppg: 14, rpg: 6, apg: 3.5, bpg: 1.2 },
+  EUROLEAGUE: { ppg: 15, rpg: 6.5, apg: 4, bpg: 1.3 },
+  NBA: { ppg: 18, rpg: 7, apg: 5, bpg: 1.5 },
+}
+
+export interface SeasonAward {
+  key: 'TOP_SCORER' | 'TOP_PASSER' | 'TOP_REBOUNDER' | 'TOP_BLOCKER' | 'MVP'
+  label: string
+  detail: string
+}
+
+export function seasonAverages(season: SeasonState): { ppg: number; rpg: number; apg: number; bpg: number } {
+  const gamesPlayed = season.wins + season.losses
+  if (gamesPlayed === 0) return { ppg: 0, rpg: 0, apg: 0, bpg: 0 }
+  return {
+    ppg: season.seasonStats.pts / gamesPlayed,
+    rpg: season.seasonStats.reb / gamesPlayed,
+    apg: season.seasonStats.ast / gamesPlayed,
+    bpg: season.seasonStats.blk / gamesPlayed,
+  }
+}
+
+export function computeSeasonAwards(season: SeasonState): SeasonAward[] {
+  const gamesPlayed = season.wins + season.losses
+  if (gamesPlayed === 0) return []
+  const avg = seasonAverages(season)
+  const bench = STAGE_BENCHMARKS[season.stage]
+  const awards: SeasonAward[] = []
+
+  const categories: { key: SeasonAward['key']; label: string; value: number; bench: number; unit: string }[] = [
+    { key: 'TOP_SCORER', label: 'Meilleur marqueur', value: avg.ppg, bench: bench.ppg, unit: 'PTS/match' },
+    { key: 'TOP_PASSER', label: 'Meilleur passeur', value: avg.apg, bench: bench.apg, unit: 'PAS/match' },
+    { key: 'TOP_REBOUNDER', label: 'Meilleur rebondeur', value: avg.rpg, bench: bench.rpg, unit: 'REB/match' },
+    { key: 'TOP_BLOCKER', label: 'Meilleur contreur', value: avg.bpg, bench: bench.bpg, unit: 'CTR/match' },
+  ]
+
+  let wonCount = 0
+  for (const cat of categories) {
+    const ratio = cat.value / cat.bench
+    if (ratio > 1) {
+      const chance = clamp((ratio - 1) * 0.9, 0, 0.85)
+      if (Math.random() < chance) {
+        awards.push({ key: cat.key, label: cat.label, detail: `${cat.value.toFixed(1)} ${cat.unit}` })
+        wonCount++
+      }
+    }
+  }
+
+  const winPct = season.wins / gamesPlayed
+  const eligibleForMvp = (winPct >= 0.5 && wonCount >= 1) || wonCount >= 3
+  const mvpChance = clamp(wonCount * 0.2 + winPct * 0.5, 0.15, 0.9)
+  if (eligibleForMvp && Math.random() < mvpChance) {
+    awards.unshift({ key: 'MVP', label: 'MVP de la saison', detail: `${season.wins}V-${season.losses}D` })
+  }
+
+  return awards
 }

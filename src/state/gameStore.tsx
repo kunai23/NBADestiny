@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react'
 import type {
+  Background,
   CareerStage,
   GameState,
   League,
+  PlayerStatline,
   Position,
   SeasonState,
 } from '../types'
@@ -15,7 +17,10 @@ import {
 import { CRUCIAL_MOMENTS } from '../data/crucialMoments'
 import {
   applyChoiceEffect,
+  computePotentialStars,
+  computeSeasonAwards,
   computeTeamOverall,
+  emptyStatline,
   generateSchedule,
   ownTeamNameFor,
   resolveCrucialGame,
@@ -40,6 +45,8 @@ function initialState(): GameState {
     pendingCrucialBase: null,
     lastGameResult: null,
     lastEventResultText: null,
+    lastCrucialSuccess: null,
+    lastSeasonAwards: [],
     flags: {},
     careerLog: [],
     awards: [],
@@ -50,7 +57,16 @@ function initialState(): GameState {
 type Action =
   | { type: 'NEW_GAME' }
   | { type: 'CONTINUE_SAVED' }
-  | { type: 'CREATE_PLAYER'; name: string; position: Position; jerseyNumber: number }
+  | {
+      type: 'CREATE_PLAYER'
+      name: string
+      position: Position
+      jerseyNumber: number
+      background: Background
+      hygiene: boolean
+      family: boolean
+      friends: boolean
+    }
   | { type: 'CHOOSE_STORY_OPTION'; choiceId: string }
   | { type: 'NEXT_GAME' }
   | { type: 'CHOOSE_CRUCIAL_OPTION'; choiceId: string }
@@ -74,21 +90,36 @@ function buildSeason(stage: CareerStage, seasonNumber: number, player: GameState
     currentGameIndex: 0,
     wins: 0,
     losses: 0,
+    seasonStats: emptyStatline(),
   }
 }
 
-function computeAwards(existing: string[], season: SeasonState): string[] {
-  const awards = [...existing]
+function addStatline(a: PlayerStatline, b: PlayerStatline): PlayerStatline {
+  return { pts: a.pts + b.pts, reb: a.reb + b.reb, ast: a.ast + b.ast, blk: a.blk + b.blk }
+}
+
+function formatAwards(season: SeasonState): string[] {
+  const label = STAGE_LABELS[season.stage]
+  return computeSeasonAwards(season).map(
+    (a) => `${a.label} - ${label} saison ${season.seasonNumber} (${a.detail})`,
+  )
+}
+
+function recordAwardFor(season: SeasonState): string | null {
   const label = STAGE_LABELS[season.stage]
   if (season.wins === season.schedule.length) {
-    awards.push(`Saison invaincue - ${label} (saison ${season.seasonNumber})`)
-  } else if (season.wins - season.losses >= 4) {
-    awards.push(`Saison brillante - ${label} (${season.wins}-${season.losses})`)
+    return `Saison invaincue - ${label} (saison ${season.seasonNumber})`
   }
-  return awards
+  if (season.wins - season.losses >= 4) {
+    return `Saison brillante - ${label} (${season.wins}-${season.losses})`
+  }
+  return null
 }
 
 function finalizeSeason(state: GameState, season: SeasonState): Partial<GameState> {
+  const statAwards = formatAwards(season)
+  const recordAward = recordAwardFor(season)
+  const newAwards = recordAward ? [recordAward, ...statAwards] : statAwards
   return {
     season,
     phase: 'season_summary',
@@ -100,7 +131,8 @@ function finalizeSeason(state: GameState, season: SeasonState): Partial<GameStat
       ...state.seasonHistory,
       { stage: season.stage, seasonNumber: season.seasonNumber, wins: season.wins, losses: season.losses },
     ],
-    awards: computeAwards(state.awards, season),
+    awards: [...state.awards, ...newAwards],
+    lastSeasonAwards: newAwards,
     pendingStoryEventId: null,
     storyContext: null,
   }
@@ -123,6 +155,7 @@ function advanceToNextGame(state: GameState): Partial<GameState> {
       usedCrucialMomentIds: [...state.usedCrucialMomentIds, cm.id],
       pendingStoryEventId: null,
       storyContext: null,
+      lastCrucialSuccess: null,
     }
   }
   const result = simulateRegularGame(season.stage, state.player!, season.seasonNumber)
@@ -141,9 +174,10 @@ function advanceToNextGame(state: GameState): Partial<GameState> {
     currentGameIndex: idx + 1,
     wins: season.wins + (result.won ? 1 : 0),
     losses: season.losses + (result.won ? 0 : 1),
+    seasonStats: addStatline(season.seasonStats, result.playerStatline),
   }
   if (newSeason.currentGameIndex >= newSeason.schedule.length) {
-    return { ...finalizeSeason(state, newSeason), lastGameResult: newSchedule[idx] }
+    return { ...finalizeSeason(state, newSeason), lastGameResult: newSchedule[idx], lastCrucialSuccess: null }
   }
   return {
     season: newSeason,
@@ -151,6 +185,7 @@ function advanceToNextGame(state: GameState): Partial<GameState> {
     lastGameResult: newSchedule[idx],
     pendingStoryEventId: null,
     storyContext: null,
+    lastCrucialSuccess: null,
   }
 }
 
@@ -166,11 +201,16 @@ function reducer(state: GameState, action: Action): GameState {
       return state
 
     case 'CREATE_PLAYER': {
+      const lifestyle = { hygiene: action.hygiene, family: action.family, friends: action.friends }
+      const potentialStars = computePotentialStars(action.background, lifestyle)
       const player: NonNullable<GameState['player']> = {
         name: action.name || 'Rookie',
         position: action.position,
         jerseyNumber: action.jerseyNumber,
         origin: 'USA',
+        background: action.background,
+        lifestyle,
+        potentialStars,
         age: 16,
         reputation: 8,
         morale: 70,
@@ -324,6 +364,7 @@ function reducer(state: GameState, action: Action): GameState {
         currentGameIndex: idx + 1,
         wins: season.wins + (result.won ? 1 : 0),
         losses: season.losses + (result.won ? 0 : 1),
+        seasonStats: addStatline(season.seasonStats, result.playerStatline),
       }
 
       const nextState: GameState = {
@@ -332,6 +373,7 @@ function reducer(state: GameState, action: Action): GameState {
         pendingCrucialMomentId: null,
         pendingCrucialBase: null,
         lastEventResultText: success ? choice.resultTextSuccess : choice.resultTextFail,
+        lastCrucialSuccess: success,
       }
 
       if (newSeason.currentGameIndex >= newSeason.schedule.length) {
@@ -358,6 +400,7 @@ function reducer(state: GameState, action: Action): GameState {
         storyContext: 'transition',
         phase: 'story_event',
         lastGameResult: null,
+        lastSeasonAwards: [],
       }
     }
 

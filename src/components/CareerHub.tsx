@@ -1,14 +1,17 @@
 import { useGame } from '../state/gameStore'
 import { PlayerCard } from './PlayerCard'
 import { STAGE_LABELS } from '../data'
+import { seasonAverages } from '../engine'
 
 export function CareerHub() {
   const { state, dispatch } = useGame()
-  const { player, season, lastGameResult, lastEventResultText } = state
+  const { player, season, lastGameResult, lastEventResultText, lastCrucialSuccess } = state
   if (!player || !season) return null
 
   const nextGame = season.schedule[season.currentGameIndex]
   const seasonOver = season.currentGameIndex >= season.schedule.length
+  const gamesPlayed = season.wins + season.losses
+  const avg = seasonAverages(season)
 
   return (
     <div className="screen hub-screen">
@@ -24,8 +27,27 @@ export function CareerHub() {
           </p>
         </div>
 
+        <div className="card season-stats-card">
+          <h3>Tes statistiques de saison</h3>
+          {gamesPlayed > 0 ? (
+            <div className="season-stats-grid">
+              <StatBox label="Points" value={avg.ppg} />
+              <StatBox label="Rebonds" value={avg.rpg} />
+              <StatBox label="Passes" value={avg.apg} />
+              <StatBox label="Contres" value={avg.bpg} />
+            </div>
+          ) : (
+            <p className="season-stats-empty">Tes moyennes apparaîtront après ton premier match.</p>
+          )}
+        </div>
+
         {lastEventResultText && (
           <div className="card result-card">
+            {lastCrucialSuccess !== null && (
+              <span className={`crucial-outcome-badge ${lastCrucialSuccess ? 'crucial-outcome-success' : 'crucial-outcome-fail'}`}>
+                {lastCrucialSuccess ? '✅ Action réussie' : '❌ Action manquée'}
+              </span>
+            )}
             <p>{lastEventResultText}</p>
           </div>
         )}
@@ -36,12 +58,6 @@ export function CareerHub() {
             <p className="result-score">
               {season.team.name} {lastGameResult.teamScore} - {lastGameResult.oppScore} {lastGameResult.opponent}
             </p>
-            {lastGameResult.playerStatline && (
-              <p className="result-stats">
-                Ta ligne de stats : {lastGameResult.playerStatline.pts} PTS · {lastGameResult.playerStatline.reb} REB ·{' '}
-                {lastGameResult.playerStatline.ast} PAS
-              </p>
-            )}
           </div>
         )}
 
@@ -78,6 +94,15 @@ export function CareerHub() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function StatBox({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="stat-box">
+      <span className="stat-box-value">{value.toFixed(1)}</span>
+      <span className="stat-box-label">{label}</span>
     </div>
   )
 }

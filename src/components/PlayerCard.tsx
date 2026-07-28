@@ -10,6 +10,24 @@ const ATTR_LIST: { key: keyof PlayerProfile['attributes']; label: string }[] = [
   { key: 'charisma', label: 'Charisme' },
 ]
 
+const BACKGROUND_LABELS: Record<PlayerProfile['background'], string> = {
+  HOOD: 'Quartiers populaires',
+  NBA_LEGACY: "Fils d'un joueur NBA",
+  SELF_MADE: 'Révélé sur le tas',
+}
+
+function Stars({ count }: { count: number }) {
+  return (
+    <span className="star-preview" aria-label={`Potentiel : ${count} étoiles sur 5`}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <span key={i} className={i < count ? 'star star-filled' : 'star'}>
+          ★
+        </span>
+      ))}
+    </span>
+  )
+}
+
 export function PlayerCard({ player }: { player: PlayerProfile }) {
   const overall = playerOverall(player.attributes)
   return (
@@ -20,8 +38,13 @@ export function PlayerCard({ player }: { player: PlayerProfile }) {
           <p className="player-meta">
             #{player.jerseyNumber} · {player.position} · {player.origin === 'USA' ? 'USA' : 'Europe'} · {player.age} ans
           </p>
+          <p className="player-background">{BACKGROUND_LABELS[player.background]}</p>
         </div>
         <div className="overall-badge">{overall}</div>
+      </div>
+      <div className="potential-row">
+        <span>Potentiel</span>
+        <Stars count={player.potentialStars} />
       </div>
       <div className="meter-row">
         <Meter label="Réputation" value={player.reputation} />

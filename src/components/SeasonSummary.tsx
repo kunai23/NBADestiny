@@ -1,14 +1,13 @@
 import { useGame } from '../state/gameStore'
 import { STAGE_LABELS } from '../data'
-import { playerOverall } from '../engine'
+import { playerOverall, seasonAverages } from '../engine'
 
 export function SeasonSummary() {
   const { state, dispatch } = useGame()
-  const { season, player, awards } = state
+  const { season, player, lastSeasonAwards } = state
   if (!season || !player) return null
 
-  const latestAward = awards[awards.length - 1]
-  const wasAwardedThisSeason = latestAward && state.seasonHistory.length > 0
+  const avg = seasonAverages(season)
 
   return (
     <div className="screen">
@@ -20,8 +19,22 @@ export function SeasonSummary() {
           <strong>{season.losses}</strong> défaites.
         </p>
 
-        {wasAwardedThisSeason && (
-          <div className="award-banner">🏆 {latestAward}</div>
+        <div className="season-stats-grid summary-season-stats">
+          <StatBox label="PTS/match" value={avg.ppg} />
+          <StatBox label="REB/match" value={avg.rpg} />
+          <StatBox label="PAS/match" value={avg.apg} />
+          <StatBox label="CTR/match" value={avg.bpg} />
+        </div>
+
+        {lastSeasonAwards.length > 0 && (
+          <div className="awards-list">
+            <h3>Récompenses de la saison</h3>
+            <ul>
+              {lastSeasonAwards.map((a, i) => (
+                <li key={i} className="award-banner">🏆 {a}</li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <div className="summary-stats">
@@ -43,6 +56,15 @@ export function SeasonSummary() {
           Continuer la carrière
         </button>
       </div>
+    </div>
+  )
+}
+
+function StatBox({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="stat-box">
+      <span className="stat-box-value">{value.toFixed(1)}</span>
+      <span className="stat-box-label">{label}</span>
     </div>
   )
 }
