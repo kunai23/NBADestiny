@@ -661,6 +661,95 @@ h1 .accent, .accent {
   margin-top: 8px;
 }
 
+/* Newspaper recap */
+.newspaper-card {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.newspaper-masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--text-h);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.newspaper-name {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0.5px;
+  color: var(--text-h);
+}
+
+.newspaper-date {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.newspaper-headline {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 28px;
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+
+.newspaper-byline {
+  color: var(--text);
+  display: block;
+  margin-bottom: 16px;
+}
+
+.objective-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.objective-met {
+  border-color: rgba(61, 220, 132, 0.4);
+  background: rgba(61, 220, 132, 0.08);
+  color: var(--win);
+}
+
+.objective-missed {
+  border-color: rgba(255, 92, 92, 0.4);
+  background: rgba(255, 92, 92, 0.08);
+  color: #ff8a8a;
+}
+
+.objective-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.objective-result {
+  font-weight: 800;
+}
+
+.newspaper-filler {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  color: var(--text-dim);
+  font-size: 13px;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+  margin: 20px 0;
+}
+
 /* Summary / end */
 .summary-record {
   color: var(--text);

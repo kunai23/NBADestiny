@@ -12,17 +12,26 @@ import type {
 } from '../types'
 import {
   getStoryEventById,
+  NEWSPAPER_NAMES,
+  pickMarketTeamName,
+  pickRandom,
   pickRandomCrucialMoment,
   pickRandomInterstitial,
+  SATIRICAL_NEWS,
   STAGE_LABELS,
 } from '../data'
 import { CRUCIAL_MOMENTS } from '../data/crucialMoments'
+import type { MarketTier } from '../data/teams'
 import {
   applyAging,
   applyChoiceEffect,
+  applyMarketMultiplier,
+  checkNationalTeamCallup,
+  checkSponsorUnlock,
   computePotentialStars,
   computeRookieContract,
   computeSeasonAwards,
+  computeSeasonObjective,
   computeTeamOverall,
   contractCurrency,
   emptyStatline,
@@ -73,6 +82,9 @@ function initialState(): GameState {
     lastSeasonAwards: [],
     lastSeasonIncome: 0,
     lastContractChangeText: null,
+    lastNewspaperName: null,
+    lastSatiricalNews: null,
+    lastSponsorText: null,
     flags: {},
     careerLog: [],
     awards: [],
@@ -106,18 +118,26 @@ const TRANSITION_NEXT_STAGE: Record<string, CareerStage> = {
 
 const DRAFT_TRANSITIONS = new Set(['transition_us_college_to_draft', 'transition_euro_academy2_to_draft'])
 
-function buildSeason(stage: CareerStage, seasonNumber: number, player: GameState['player']): SeasonState {
+function buildSeason(
+  stage: CareerStage,
+  seasonNumber: number,
+  player: GameState['player'],
+  teamNameOverride?: string,
+): SeasonState {
   const overall = computeTeamOverall(stage, player!, seasonNumber)
+  const objective = computeSeasonObjective(overall)
   return {
     stage,
     seasonNumber,
-    team: { name: ownTeamNameFor(stage), league: stage as League, overall },
+    team: { name: teamNameOverride ?? ownTeamNameFor(stage), league: stage as League, overall },
     schedule: generateSchedule(stage, seasonNumber, player!),
     currentGameIndex: 0,
     wins: 0,
     losses: 0,
     seasonStats: emptyStatline(),
     highlights: [],
+    objectiveLabel: objective.label,
+    objectiveWinPct: objective.winPctTarget,
   }
 }
 
@@ -146,12 +166,33 @@ function recordAwardFor(season: SeasonState): string | null {
 function finalizeSeason(state: GameState, season: SeasonState, player: PlayerProfile): Partial<GameState> {
   const statAwards = formatAwards(season)
   const recordAward = recordAwardFor(season)
-  const newAwards = recordAward ? [recordAward, ...statAwards] : statAwards
-  const income = isProStage(season.stage) ? player.contract : 0
+  let newAwards = recordAward ? [recordAward, ...statAwards] : statAwards
+  const isPro = isProStage(season.stage)
+
+  let income = isPro ? player.contract : 0
+  let newFlags = { ...state.flags }
+  let lastSponsorText: string | null = null
+
+  if (isPro) {
+    const sponsor = checkSponsorUnlock(player.reputation, newFlags)
+    if (sponsor) {
+      newFlags = { ...newFlags, [sponsor.flag]: true }
+      income += sponsor.bonus
+      lastSponsorText = `${sponsor.text} Prime de signature : ${formatMoney(sponsor.bonus, contractCurrency(season.stage))}.`
+    }
+    if (checkNationalTeamCallup(season.stage, player.reputation, newFlags)) {
+      newFlags = { ...newFlags, national_team: true }
+      const callupAward = `Sélection en équipe nationale - ${STAGE_LABELS[season.stage]} (saison ${season.seasonNumber})`
+      newAwards = [callupAward, ...newAwards]
+    }
+  }
+
   const updatedPlayer = income > 0 ? { ...player, careerEarnings: player.careerEarnings + income } : player
+
   return {
     season,
     player: updatedPlayer,
+    flags: newFlags,
     phase: 'season_summary',
     stageHistoryCount: {
       ...state.stageHistoryCount,
@@ -164,6 +205,9 @@ function finalizeSeason(state: GameState, season: SeasonState, player: PlayerPro
     awards: [...state.awards, ...newAwards],
     lastSeasonAwards: newAwards,
     lastSeasonIncome: income,
+    lastSponsorText,
+    lastNewspaperName: pickRandom(NEWSPAPER_NAMES),
+    lastSatiricalNews: pickRandom(SATIRICAL_NEWS),
     pendingStoryEventId: null,
     storyContext: null,
   }
@@ -340,6 +384,8 @@ function reducer(state: GameState, action: Action): GameState {
 
         let contractedPlayer = agedPlayer
         let lastContractChangeText: string | null = null
+        let teamNameOverride: string | undefined
+
         if (DRAFT_TRANSITIONS.has(event.id)) {
           const currency = contractCurrency(nextStage)
           const rookieContract = computeRookieContract(agedPlayer, nextStage as 'NBA' | 'EUROLEAGUE')
@@ -348,9 +394,13 @@ function reducer(state: GameState, action: Action): GameState {
         } else if (event.id === 'transition_pro_continue') {
           const currency = contractCurrency(completedSeason.stage)
           const awardsCount = state.lastSeasonAwards.length
-          const newContract = renewContract(agedPlayer.contract, completedSeason, awardsCount)
+          const tier: MarketTier | 'stay' =
+            choice.effect.flag === 'sign_big_market' ? 'big' : choice.effect.flag === 'sign_small_market' ? 'small' : 'stay'
+          const baseNewContract = renewContract(agedPlayer.contract, completedSeason, awardsCount)
+          const newContract = applyMarketMultiplier(baseNewContract, tier)
           const oldContract = agedPlayer.contract
           contractedPlayer = { ...agedPlayer, contract: newContract }
+          teamNameOverride = tier === 'stay' ? completedSeason.team.name : pickMarketTeamName(nextStage, tier)
           const pctChange = oldContract > 0 ? Math.round(((newContract - oldContract) / oldContract) * 100) : null
           lastContractChangeText =
             pctChange === null
@@ -358,7 +408,7 @@ function reducer(state: GameState, action: Action): GameState {
               : `Nouveau contrat : ${formatMoney(newContract, currency)} / an (${pctChange >= 0 ? '+' : ''}${pctChange}%)`
         }
 
-        const season = buildSeason(nextStage, nextSeasonNumber, contractedPlayer)
+        const season = buildSeason(nextStage, nextSeasonNumber, contractedPlayer, teamNameOverride)
         return {
           ...base,
           player: contractedPlayer,

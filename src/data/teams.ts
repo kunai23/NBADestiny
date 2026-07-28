@@ -70,6 +70,26 @@ export function pickOwnTeamName(stage: CareerStage): string {
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
+export type MarketTier = 'big' | 'small'
+
+export const MARKET_TEAM_NAMES: Partial<Record<CareerStage, Record<MarketTier, string[]>>> = {
+  NBA: {
+    big: ['New York Comets', 'LA Volt', 'Chicago Ironhawks', 'Miami Tide'],
+    small: ['Denver Peaks', 'Phoenix Sundevils', 'Memphis Riverkings', 'Oklahoma Thunderbirds'],
+  },
+  EUROLEAGUE: {
+    big: ['Madrid Lobos', 'Milano Fenice', 'Istanbul Simsek'],
+    small: ['Berlin Adler', 'Vilnius Zalgirio', 'Zagreb Cibonia'],
+  },
+}
+
+export function pickMarketTeamName(stage: CareerStage, tier: MarketTier): string {
+  const pools = MARKET_TEAM_NAMES[stage]
+  const pool = pools ? pools[tier] : undefined
+  if (!pool || pool.length === 0) return pickOwnTeamName(stage)
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
 export const STAGE_LABELS: Record<CareerStage, string> = {
   US_HIGH_SCHOOL: 'Lycée (USA)',
   US_COLLEGE: 'Université (NCAA)',

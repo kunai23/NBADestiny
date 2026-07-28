@@ -81,20 +81,32 @@ export const STAGE_TRANSITION_EVENTS: Record<string, StoryEvent> = {
 
 export const PRO_SEASON_CONTINUE_EVENT: StoryEvent = {
   id: 'transition_pro_continue',
-  title: 'Bilan de fin de saison',
-  body: "Une nouvelle saison professionnelle vient de s'achever. C'est l'heure de faire le point sur la suite de ta carrière.",
+  title: 'Marché des transferts',
+  body: "Une nouvelle saison professionnelle vient de s'achever. Ton agent t'annonce plusieurs pistes pour la suite de ta carrière.",
   choices: [
     {
-      id: 'pro_continue',
-      text: "Continuer l'aventure pour une saison supplémentaire",
-      effect: {},
-      resultText: "Tu signes pour une saison de plus. La légende continue de s'écrire.",
+      id: 'pro_stay',
+      text: 'Prolonger ton contrat avec ton club actuel',
+      effect: { morale: 2 },
+      resultText: 'Tu prolonges avec la franchise qui te connaît par cœur. Continuité et confiance.',
+    },
+    {
+      id: 'pro_big_market',
+      text: 'Signer dans une franchise ambitieuse de grand marché',
+      effect: { reputation: 4, morale: -3, flag: 'sign_big_market' },
+      resultText: 'Projecteurs et exigences maximales : tu rejoins une franchise qui vise le titre.',
+    },
+    {
+      id: 'pro_small_market',
+      text: 'Rejoindre une franchise reconstructrice, temps de jeu garanti',
+      effect: { morale: 5, flag: 'sign_small_market' },
+      resultText: "Moins de pression, plus de minutes : le pari du développement sur le long terme.",
     },
     {
       id: 'pro_retire',
-      text: "Raccrocher les baskets et clore ta carrière ici",
+      text: 'Raccrocher les baskets et clore ta carrière ici',
       effect: { flag: 'retire' },
-      resultText: "Tu annonces ta retraite. Le temps est venu de regarder ce que tu as accompli.",
+      resultText: 'Tu annonces ta retraite. Le temps est venu de regarder ce que tu as accompli.',
     },
   ],
 }

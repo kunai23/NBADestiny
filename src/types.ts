@@ -132,6 +132,8 @@ export interface SeasonState {
   losses: number
   seasonStats: PlayerStatline
   highlights: string[]
+  objectiveLabel: string
+  objectiveWinPct: number
 }
 
 export interface CrucialBase {
@@ -167,6 +169,9 @@ export interface GameState {
   lastSeasonAwards: string[]
   lastSeasonIncome: number
   lastContractChangeText: string | null
+  lastNewspaperName: string | null
+  lastSatiricalNews: string | null
+  lastSponsorText: string | null
   flags: Record<string, boolean>
   careerLog: CareerLogEntry[]
   awards: string[]

@@ -336,3 +336,48 @@ export function formatMoney(amount: number, currency: '$' | '€' = '$'): string
   const formatted = Math.round(amount).toLocaleString('fr-FR')
   return currency === '$' ? `${formatted} $` : `${formatted} €`
 }
+
+// --- Transfer market ---
+
+export function applyMarketMultiplier(contract: number, tier: 'big' | 'small' | 'stay'): number {
+  if (tier === 'big') return roundThousand(contract * 1.15)
+  if (tier === 'small') return roundThousand(contract * 0.85)
+  return contract
+}
+
+// --- Season objective ---
+
+export function computeSeasonObjective(teamOverall: number): { label: string; winPctTarget: number } {
+  if (teamOverall >= 85) return { label: 'Remporter le titre de champion', winPctTarget: 0.7 }
+  if (teamOverall >= 74) return { label: 'Atteindre les playoffs', winPctTarget: 0.55 }
+  if (teamOverall >= 62) return { label: 'Se battre pour une place en playoffs', winPctTarget: 0.45 }
+  return { label: 'Faire progresser les jeunes talents du roster', winPctTarget: 0.3 }
+}
+
+// --- Sponsors ---
+
+const SPONSOR_TIERS: { flag: string; reputation: number; bonus: number; text: string }[] = [
+  { flag: 'sponsor_local', reputation: 35, bonus: 20_000, text: 'Un équipementier local te propose ton premier partenariat.' },
+  { flag: 'sponsor_national', reputation: 60, bonus: 80_000, text: 'Une marque nationale de sportswear te met sous contrat.' },
+  { flag: 'sponsor_global', reputation: 85, bonus: 300_000, text: "Un géant mondial de l'équipement sportif signe avec toi." },
+]
+
+export function checkSponsorUnlock(
+  reputation: number,
+  claimedFlags: Record<string, boolean>,
+): { flag: string; bonus: number; text: string } | null {
+  for (const tier of SPONSOR_TIERS) {
+    if (reputation >= tier.reputation && !claimedFlags[tier.flag]) {
+      return { flag: tier.flag, bonus: tier.bonus, text: tier.text }
+    }
+  }
+  return null
+}
+
+export function checkNationalTeamCallup(
+  stage: CareerStage,
+  reputation: number,
+  claimedFlags: Record<string, boolean>,
+): boolean {
+  return isProStage(stage) && reputation >= 80 && !claimedFlags.national_team
+}

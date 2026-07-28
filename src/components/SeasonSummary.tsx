@@ -1,28 +1,42 @@
 import { useGame } from '../state/gameStore'
-import { STAGE_LABELS } from '../data'
+import { generateHeadline, STAGE_LABELS } from '../data'
 import { contractCurrency, formatMoney, playerOverall, seasonAverages } from '../engine'
 
 export function SeasonSummary() {
   const { state, dispatch } = useGame()
-  const { season, player, lastSeasonAwards, lastSeasonIncome } = state
+  const { season, player, lastSeasonAwards, lastSeasonIncome, lastNewspaperName, lastSatiricalNews, lastSponsorText } = state
   if (!season || !player) return null
 
   const avg = seasonAverages(season)
   const currency = contractCurrency(season.stage)
+  const gamesPlayed = season.wins + season.losses
+  const winPct = gamesPlayed > 0 ? season.wins / gamesPlayed : 0
+  const objectiveMet = winPct >= season.objectiveWinPct
+  const isMvp = lastSeasonAwards.some((a) => a.startsWith('MVP de la saison'))
+  const headline = generateHeadline(season.wins, season.losses, isMvp, player.name)
 
   return (
     <div className="screen">
-      <div className="card summary-card">
-        <span className="badge">Bilan de saison</span>
-        <h2>{STAGE_LABELS[season.stage]} — Saison {season.seasonNumber}</h2>
-        <p className="summary-record">
+      <div className="card newspaper-card">
+        <div className="newspaper-masthead">
+          <span className="newspaper-name">{lastNewspaperName ?? 'La Gazette du Panier'}</span>
+          <span className="newspaper-date">{STAGE_LABELS[season.stage]} · Saison {season.seasonNumber}</span>
+        </div>
+        <h2 className="newspaper-headline">{headline}</h2>
+        <p className="newspaper-byline">
           {season.team.name} termine la saison avec un bilan de <strong>{season.wins}</strong> victoires et{' '}
           <strong>{season.losses}</strong> défaites.
         </p>
 
+        <div className={`objective-banner ${objectiveMet ? 'objective-met' : 'objective-missed'}`}>
+          <span className="objective-label">Objectif de la franchise : {season.objectiveLabel}</span>
+          <span className="objective-result">{objectiveMet ? 'Rempli ✅' : 'Manqué ❌'}</span>
+        </div>
+
         {lastSeasonIncome > 0 && (
           <div className="award-banner">💰 Revenus de la saison : {formatMoney(lastSeasonIncome, currency)}</div>
         )}
+        {lastSponsorText && <div className="award-banner">🤝 {lastSponsorText}</div>}
 
         <div className="season-stats-grid summary-season-stats">
           <StatBox label="PTS/match" value={avg.ppg} />
@@ -71,6 +85,8 @@ export function SeasonSummary() {
             <span className="summary-value">{player.morale}</span>
           </div>
         </div>
+
+        {lastSatiricalNews && <p className="newspaper-filler">{lastSatiricalNews}</p>}
 
         <button className="btn btn-primary" onClick={() => dispatch({ type: 'CONTINUE_CAREER' })}>
           Continuer la carrière

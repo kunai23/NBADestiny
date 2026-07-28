@@ -8,6 +8,7 @@ export * from './prologue'
 export * from './storyEvents'
 export * from './stageEvents'
 export * from './crucialMoments'
+export * from './newspaper'
 
 export function getStoryEventById(id: string): StoryEvent | undefined {
   const all: StoryEvent[] = [
