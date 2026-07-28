@@ -36,7 +36,23 @@ import {
   simulateRegularGame,
 } from '../engine'
 
-const STORAGE_KEY = 'nba-destiny-save-v1'
+// Bump this whenever GameState's shape changes so stale saves from an
+// older version of the game are ignored instead of crashing the app.
+const STORAGE_KEY = 'nba-destiny-save-v2'
+
+function isCompatibleSave(parsed: unknown): parsed is GameState {
+  if (!parsed || typeof parsed !== 'object') return false
+  const state = parsed as Partial<GameState>
+  if (state.player === null) return true
+  if (!state.player || typeof state.player !== 'object') return false
+  const player = state.player as Partial<PlayerProfile>
+  return (
+    typeof player.background === 'string' &&
+    typeof player.lifestyle === 'string' &&
+    typeof player.contract === 'number' &&
+    typeof player.careerEarnings === 'number'
+  )
+}
 
 function initialState(): GameState {
   return {
@@ -449,7 +465,11 @@ const GameContext = createContext<GameContextValue | null>(null)
 function loadInitial(): GameState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as GameState
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (isCompatibleSave(parsed)) return parsed
+      localStorage.removeItem(STORAGE_KEY)
+    }
   } catch {
     // ignore corrupt save
   }
@@ -477,7 +497,8 @@ export function hasSavedGame(): boolean {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return false
-    const parsed = JSON.parse(raw) as GameState
+    const parsed = JSON.parse(raw)
+    if (!isCompatibleSave(parsed)) return false
     return parsed.phase !== 'landing' && parsed.player !== null
   } catch {
     return false
