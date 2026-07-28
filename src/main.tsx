@@ -1,0 +1,16 @@
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.tsx'
+import { GameProvider } from './state/gameStore.tsx'
+import { ErrorBoundary } from './ErrorBoundary.tsx'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <ErrorBoundary>
+      <GameProvider>
+        <App />
+      </GameProvider>
+    </ErrorBoundary>
+  </StrictMode>,
+)
